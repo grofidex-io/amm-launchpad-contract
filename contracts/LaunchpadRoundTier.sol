@@ -79,6 +79,7 @@ contract LaunchpadRoundTier is AccessControl {
     uint256 _percentCancel,
     uint256 _tierNumber
   ) public onlyRole(OPERATOR_ROLE) {
+    require(_startCancel >= _end && _start < _end && _startCancel < _endCancel, "E1");
     launchpadContract = _launchpadContract;
     minStake = _minStake;
     maxStake = _maxStake;

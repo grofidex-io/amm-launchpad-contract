@@ -1,16 +1,16 @@
 async function main() {
-  const MyNFT = await ethers.getContractFactory("LaunchPadRoundCommunity");
+  const MyNFT = await ethers.getContractFactory("FactoryLaunchpadRound");
 
   // Start deployment, returning a promise that resolves to a contract object
   const myNFT = await MyNFT.deploy(
-    // "NFT_Stake",
-    // "NFT_Stake",
-    // "0xFC00FACE00000000000000000000000000000000",
-    "0xE4B8f63C111EF118587D30401e1Db99f4CfBD900"
-    // "1"
+    "0x3BDBDa6E1710d814B6142c1109cb786D4cE169FC"
   );
   await myNFT.deployed();
   console.log("Contract deployed to address:", myNFT.address);
+  await hre.run(`verify:verify`, {
+    address: myNFT.address,
+    constructorArguments: ['0x3BDBDa6E1710d814B6142c1109cb786D4cE169FC'],
+  });
 }
 
 main()
