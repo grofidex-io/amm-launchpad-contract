@@ -21,13 +21,14 @@ contract LaunchpadRoundTier is AccessControl {
   uint256 public percentCancel;
   uint256 public lastCurrentCommit;
   uint256 public tierNumber;
-  string public roundType = "TIER"; ///TIER, WHITELIST, COMMUNITY
+  string constant public roundType = "TIER"; ///TIER, WHITELIST, COMMUNITY
 
   mapping(address => UserCommit) public userCommit;
 
   event Commit(address indexed committer, address indexed launchpadContract, uint256 indexed amount);
   event CancelCommit(address indexed committer, address indexed launchpadContract, uint256 indexed amount, uint256 fee);
   event ClaimGiveBack(address indexed committer, address indexed launchpadContract, uint256 indexed amount);
+  event UpdateLimitCommit(uint256 indexed limitCommit);
 
   constructor(
     address _admin
@@ -129,12 +130,12 @@ contract LaunchpadRoundTier is AccessControl {
     if (lastCurrentCommit == 0) lastCurrentCommit = currentCommit;
     if (lastCurrentCommit > maxCommitAmount) realCommit = getCommitedForCancel(msg.sender);
     fee = realCommit * percentCancel / 100 ether;
-    payable(msg.sender).transfer(userCommit[msg.sender].u2uCommited - fee - userCommit[msg.sender].giveBackAmount);
-    ILaunchpadManager(launchpadContract).depositValue{value: fee}();
-    currentCommit -= userCommit[msg.sender].u2uCommited;
-    ILaunchpadManager(launchpadContract).minusCommit(msg.sender, userCommit[msg.sender].u2uCommited);
-    emit CancelCommit(msg.sender, launchpadContract, userCommit[msg.sender].u2uCommited, fee);
+    currentCommit -= realCommit;
+    ILaunchpadManager(launchpadContract).minusCommit(msg.sender, realCommit);
+    emit CancelCommit(msg.sender, launchpadContract, realCommit, fee);
     userCommit[msg.sender].u2uCommited = 0;
+    safeTransferU2U(msg.sender, realCommit - fee - userCommit[msg.sender].giveBackAmount);
+    safeTransferU2U(launchpadContract, fee);
   }
 
   function getCommitedForCancel(address account) internal view returns(uint256) {
@@ -147,13 +148,14 @@ contract LaunchpadRoundTier is AccessControl {
     require(block.timestamp > endCancel, "E1");
     uint256 amount = getGiveBackAmountTier(msg.sender);
     require(amount != 0 && userCommit[msg.sender].giveBackAmount == 0, "E3");
-    if (amount > address(this).balance) payable(msg.sender).transfer(address(this).balance);
-    else payable(msg.sender).transfer(amount);
+    
     userCommit[msg.sender].giveBackAmount = amount;
     // currentCommit -= amount;
     // totalCommitByUser[msg.sender] -= amount;
     ILaunchpadManager(launchpadContract).minusGiveBack(msg.sender, amount);
     emit ClaimGiveBack(msg.sender, launchpadContract, amount);
+    if (amount > address(this).balance) safeTransferU2U(msg.sender, address(this).balance);
+    else safeTransferU2U(msg.sender, amount);
   }
 
   function claimGiveBackFromManager(address user) public returns(uint256) {
@@ -161,12 +163,13 @@ contract LaunchpadRoundTier is AccessControl {
     require(block.timestamp > endCancel, "E1");
     uint256 amount = getGiveBackAmountTier(user);
     require(amount != 0 && userCommit[user].giveBackAmount == 0, "E3");
-    if (amount > address(this).balance) payable(user).transfer(address(this).balance);
-    else payable(user).transfer(amount);
+    
     userCommit[user].giveBackAmount = amount;
     // currentCommit -= amount;
     // totalCommitByUser[msg.sender] -= amount;
     // ILaunchpadManager(launchpadContract).minusCommit(user, amount);
+    if (amount > address(this).balance) safeTransferU2U(user, address(this).balance);
+    else safeTransferU2U(user, amount);
     emit ClaimGiveBack(user, launchpadContract, amount);
     return amount;
   }
@@ -192,6 +195,7 @@ contract LaunchpadRoundTier is AccessControl {
   function receiptLimitCommit(uint256 amount) public {
     require(msg.sender == launchpadContract);
     maxCommitAmount += amount;
+    emit UpdateLimitCommit(maxCommitAmount);
   }
 
   function givebackStatus(address account) public view returns(uint256, uint256) {
@@ -200,5 +204,10 @@ contract LaunchpadRoundTier is AccessControl {
 
   function getGiveBack(address account) public view returns(uint256) {
     return getGiveBackAmountTier(account) - userCommit[account].giveBackAmount;
+  }
+
+  function safeTransferU2U(address to, uint256 value) internal {
+    (bool success, ) = to.call{value: value}(new bytes(0));
+    require(success, 'STE');
   }
 }

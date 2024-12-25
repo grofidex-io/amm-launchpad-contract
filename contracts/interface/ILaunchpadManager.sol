@@ -18,6 +18,4 @@ interface ILaunchpadManager {
     function plusLimitForNextRound(address nextRound, uint256 amount) external;
 
     function transferCommit(uint256 amountGiveBack) external payable;
-
-    function depositValue() external payable;
 }

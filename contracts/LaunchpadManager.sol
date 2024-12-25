@@ -110,9 +110,11 @@ contract LaunchpadManager is AccessControl {
     checkAmountGiveBack(msg.sender);
     if (block.timestamp > end) {
       require(totalCommit > softcap, "E6");
-      IERC20(tokenLaunchpad).transfer(msg.sender, totalCommitByUser[msg.sender] * tokenRate / 1 ether);
-      emit ClaimToken(msg.sender, address(this), totalCommitByUser[msg.sender] * tokenRate / 1 ether);
+      uint256 _totalCommitByUser = totalCommitByUser[msg.sender];
       totalCommitByUser[msg.sender] = 0;
+      bool status = IERC20(tokenLaunchpad).transfer(msg.sender, _totalCommitByUser * tokenRate / 1 ether);
+      require(status, "STTF");
+      emit ClaimToken(msg.sender, address(this), _totalCommitByUser * tokenRate / 1 ether);
     }
   }
 
@@ -121,13 +123,14 @@ contract LaunchpadManager is AccessControl {
     require(totalCommit < softcap);
     require(totalCommitByUser[msg.sender] != 0);
     
-    emit Refund(msg.sender, address(this), totalCommitByUser[msg.sender]);
     uint256 getGiveBack = checkWithdrawSoftCapGiveBack();
-    payable(msg.sender).transfer(totalCommitByUser[msg.sender] - getGiveBack);
+    uint256 _totalCommitByUser = totalCommitByUser[msg.sender];
     totalCommit -= (totalCommitByUser[msg.sender] - getGiveBack);
     totalCommitByUser[msg.sender] = 0;
+    safeTransferU2U(msg.sender, _totalCommitByUser - getGiveBack);
+    emit Refund(msg.sender, address(this), _totalCommitByUser);
   }
-
+  
   function checkWithdrawSoftCapGiveBack() internal returns(uint256) {
     for (uint256 i = 0; i < rounds.length; i++) {
       if (keccak256(abi.encodePacked(ILaunchpadRound(rounds[i]).roundType())) == keccak256(abi.encodePacked("TIER"))) {
@@ -142,11 +145,12 @@ contract LaunchpadManager is AccessControl {
   }
 
   function transferLaunchpadToken(address receiver, uint256 amount) public onlyRole(OPERATOR_ROLE) {
-    IERC20(tokenLaunchpad).transfer(receiver, amount);
+    bool status = IERC20(tokenLaunchpad).transfer(receiver, amount);
+    require(status, "STTF");
   }
 
   function transferU2U(address receiver, uint256 amount) public onlyRole(OPERATOR_ROLE) {
-    payable(receiver).transfer(amount);
+    safeTransferU2U(receiver, amount);
   }
 
   function depositToken(uint256 amount) public {
@@ -155,7 +159,7 @@ contract LaunchpadManager is AccessControl {
     IERC20(tokenLaunchpad).transferFrom(msg.sender, address(this), amount);
   }
 
-  // receive() external payable {}
+  receive() external payable {}
 
   function removeRound(address _round) external onlyRole(OPERATOR_ROLE){
     uint counter = rounds.length;
@@ -185,7 +189,7 @@ contract LaunchpadManager is AccessControl {
     require(msg.sender == publisher);
     require(u2uBelongToPublisher >= amount);
     u2uBelongToPublisher -= amount;
-    payable(msg.sender).transfer(amount);
+    safeTransferU2U(msg.sender, amount);
   }
 
   function viewTierPharse(address account) public view returns(address) {
@@ -197,6 +201,8 @@ contract LaunchpadManager is AccessControl {
     return address(0);
   }
 
-  function depositValue() public payable {}
-
+  function safeTransferU2U(address to, uint256 value) internal {
+    (bool success, ) = to.call{value: value}(new bytes(0));
+    require(success, 'STE');
+  }
 }

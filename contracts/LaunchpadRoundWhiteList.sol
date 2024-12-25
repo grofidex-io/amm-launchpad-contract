@@ -20,7 +20,7 @@ contract LaunchpadRoundWhiteList is AccessControl {
   uint256 public endCancel;
   uint256 public percentCancel;
   uint256 public lastCurrentCommit;
-  string public roundType = "WHITELIST"; ///TIER, WHITELIST, COMMUNITY
+  string constant public roundType = "WHITELIST"; ///TIER, WHITELIST, COMMUNITY
 
   mapping(address => UserCommit) public userCommit;
 
@@ -28,6 +28,7 @@ contract LaunchpadRoundWhiteList is AccessControl {
   event CancelCommit(address indexed committer, address indexed launchpadContract, uint256 indexed amount, uint256 fee);
   event ClaimGiveBack(address indexed committer, address indexed launchpadContract, uint256 indexed amount);
   event ApplyWhiteList(address indexed user);
+  event UpdateLimitCommit(uint256 indexed limitCommit);
 
   function getConfigInfo() public view returns(ConfigInfo memory) {
     return ConfigInfo(
@@ -103,7 +104,7 @@ contract LaunchpadRoundWhiteList is AccessControl {
     require(currentCommit < maxCommitAmount, "E4");
     if (msg.value > maxCommitAmount - currentCommit) {
       availCommit = maxCommitAmount - currentCommit;
-      payable(msg.sender).transfer(msg.value - availCommit);
+      safeTransferU2U(msg.sender, msg.value - availCommit);
     }
     require(availCommit + userCommit[msg.sender].u2uCommited <= maxBuyPerUser, "E3");
     currentCommit += availCommit;
@@ -118,12 +119,12 @@ contract LaunchpadRoundWhiteList is AccessControl {
     uint256 fee;
     require(block.timestamp < endCancel && block.timestamp > startCancel, "E1");
     fee = realCommit * percentCancel / 100 ether;
-    payable(msg.sender).transfer(userCommit[msg.sender].u2uCommited - fee);
-    ILaunchpadManager(launchpadContract).depositValue{value: fee}();
-    currentCommit -= userCommit[msg.sender].u2uCommited;
-    ILaunchpadManager(launchpadContract).minusCommit(msg.sender, userCommit[msg.sender].u2uCommited);
-    emit CancelCommit(msg.sender, launchpadContract, userCommit[msg.sender].u2uCommited, fee);
+    currentCommit -= realCommit;
+    ILaunchpadManager(launchpadContract).minusCommit(msg.sender, realCommit);
+    emit CancelCommit(msg.sender, launchpadContract, realCommit, fee);
     userCommit[msg.sender].u2uCommited = 0;
+    safeTransferU2U(msg.sender, realCommit - fee);
+    safeTransferU2U(launchpadContract, fee);
   }
 
   function addWhiteList() public {
@@ -148,5 +149,12 @@ contract LaunchpadRoundWhiteList is AccessControl {
   function receiptLimitCommit(uint256 amount) public {
     require(msg.sender == launchpadContract);
     maxCommitAmount += amount;
+    emit UpdateLimitCommit(maxCommitAmount);
+
+  }
+
+  function safeTransferU2U(address to, uint256 value) internal {
+    (bool success, ) = to.call{value: value}(new bytes(0));
+    require(success, 'STE');
   }
 }
